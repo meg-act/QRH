@@ -6,33 +6,29 @@
     <title>早押しシステム(競技仕様)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; text-align: center; background: #fff; touch-action: manipulation; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; text-align: center; background: #fff; touch-action: manipulation; overflow: hidden; }
         .hidden { display: none !important; }
         .screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; width: 100%; }
         
-        /* 初期設定画面のスタイル */
+        /* 初期設定画面 */
         input[type="text"] { padding: 15px; font-size: 20px; width: 80%; max-width: 300px; margin-bottom: 20px; text-align: center; }
         .btn-start { padding: 15px 40px; font-size: 20px; background: #333; color: #fff; border: none; cursor: pointer; border-radius: 5px; }
 
-        /* 親機画面のスタイル */
+        /* 親機画面 */
         #name-display { font-size: 15vw; font-weight: bold; margin: 0; flex-grow: 1; display: flex; align-items: center; }
         .judge-area { display: flex; width: 100%; height: 40vh; }
         .judge-btn { flex: 1; font-size: 100px; border: none; color: white; cursor: pointer; font-weight: bold; }
         .btn-o { background: #007bff; }
         .btn-x { background: #dc3545; }
         
-        /* QRとURLコピーのエリア（左上に小さく配置） */
         #qr-container { position: absolute; top: 10px; left: 10px; text-align: left; opacity: 0.8; }
         .btn-copy { margin-top: 5px; padding: 6px 12px; font-size: 12px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .btn-copy:active { transform: translateY(2px); }
 
-        /* 子機画面のスタイル */
-        #buzzer-btn { width: 100%; height: 100%; border: none; outline: none; background: #dc3545; cursor: pointer; transition: background 0.1s; }
-        /* 子機の状態カラー */
-        .state-ready { background: #dc3545 !important; } /* 赤：押せる */
-        .state-wait { background: #ccc !important; } /* グレー：他の人が解答中 */
-        .state-answering { background: #007bff !important; } /* 青：自分が解答中 */
-        .state-out { background: #222 !important; } /* 黒：お休み */
+        /* 子機画面 (完全な色パネル) */
+        #buzzer-btn { width: 100%; height: 100%; border: none; outline: none; cursor: pointer; padding: 0; margin: 0; -webkit-tap-highlight-color: transparent; }
+        .bg-gray { background: #888888 !important; } /* 灰色：待機・他人が押した・ペナルティ */
+        .bg-red { background: #dc3545 !important; } /* 赤：自分が押した */
     </style>
 </head>
 <body>
@@ -53,9 +49,7 @@
         <img id="qrcode" src="" width="80" height="80"><br>
         <button class="btn-copy" onclick="copyJoinLink()">URLコピー</button>
     </div>
-    
     <div id="name-display">待機中</div>
-    
     <div class="judge-area">
         <button class="judge-btn btn-o" onclick="judge(true)">〇</button>
         <button class="judge-btn btn-x" onclick="judge(false)">×</button>
@@ -63,22 +57,22 @@
 </div>
 
 <div id="player-screen" class="screen hidden">
-    <button id="buzzer-btn" class="state-ready" onclick="pushBuzzer()"></button>
+    <button id="buzzer-btn" class="bg-gray" onclick="pushBuzzer()"></button>
 </div>
 
 <script>
     const hostIdParam = new URLSearchParams(window.location.search).get('host');
     let peer = new Peer();
     
-    // 状態管理変数
+    // 状態管理
     let connections = [];
     let isAnswering = false;
     let answeringPeerId = null;
     let wrongPlayers = []; // お休み中のID
     let myName = "";
     let hostConn = null;
-    let amIOut = false; // 自分が休止中か
-    let currentJoinUrl = ""; // コピー用のURL保持
+    let amIOut = false; 
+    let currentJoinUrl = ""; 
 
     peer.on('open', () => {
         document.getElementById(hostIdParam ? 'player-setup' : 'host-setup').classList.remove('hidden');
@@ -95,7 +89,6 @@
         peer.on('connection', (conn) => {
             connections.push(conn);
             conn.on('data', (data) => {
-                // 誰も答えておらず、かつお休み中でない人だけ通す
                 if (data.type === 'buzz' && !isAnswering && !wrongPlayers.includes(conn.peer)) {
                     isAnswering = true;
                     answeringPeerId = conn.peer;
@@ -106,25 +99,20 @@
         });
     }
 
-    // URLコピー機能
     function copyJoinLink() {
-        navigator.clipboard.writeText(currentJoinUrl).then(() => {
-            alert("参加用URLをコピーしました！");
-        }).catch(() => {
-            alert("コピーに失敗しました。");
-        });
+        navigator.clipboard.writeText(currentJoinUrl).then(() => alert("コピーしました")).catch(() => alert("失敗しました"));
     }
 
     function judge(isCorrect) {
         if (isCorrect) {
-            // 【〇】正解、または次の問題へ強制スキップ (全リセット)
+            // 【〇】正解 (全リセット)
             isAnswering = false;
             answeringPeerId = null;
             wrongPlayers = [];
             document.getElementById('name-display').innerText = '待機中';
             broadcast({ type: 'reset' });
         } else {
-            // 【×】誤答処理 (押した人をお休みに入れ、他を復活)
+            // 【×】誤答 (押した人をお休みにし、他を復活)
             if (!isAnswering) return; 
             wrongPlayers.push(answeringPeerId);
             const wrongId = answeringPeerId;
@@ -155,34 +143,31 @@
 
         hostConn.on('data', (data) => {
             if (data.type === 'lock') {
-                // 誰かが押した
-                btn.className = (data.answeringId === peer.id) ? 'state-answering' : 'state-wait';
+                // 自分が一番早ければ赤、それ以外は灰色のまま
+                btn.className = (data.answeringId === peer.id) ? 'bg-red' : 'bg-gray';
             } 
             else if (data.type === 'resume') {
-                // 誰かが×になった
-                if (data.wrongId === peer.id) {
-                    amIOut = true;
-                    btn.className = 'state-out';
-                } else if (!amIOut) {
-                    btn.className = 'state-ready';
-                }
+                // 誰かが×になった（自分がお休み判定されても画面は灰色のまま）
+                if (data.wrongId === peer.id) amIOut = true;
+                btn.className = 'bg-gray';
             } 
             else if (data.type === 'reset') {
-                // 親が〇を押した（次の問題）
+                // 親が〇を押した（次の問題へ）
                 amIOut = false;
-                btn.className = 'state-ready';
+                btn.className = 'bg-gray';
             }
         });
     }
 
     function pushBuzzer() {
-        if (amIOut || document.getElementById('buzzer-btn').className !== 'state-ready') return;
+        // お休み中でなければ送信（画面上は灰色でも押せる状態なら送信される）
+        if (amIOut) return;
         if (hostConn && hostConn.open) {
             hostConn.send({ type: 'buzz', name: myName });
         }
     }
     
-    // ダブルタップズーム防止(iOS対応)
+    // ダブルタップズーム等の防止
     document.addEventListener('dblclick', function(e){ e.preventDefault(); }, { passive: false });
 </script>
 
