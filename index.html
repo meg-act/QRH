@@ -2,218 +2,169 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>スマホで早押しボタン！</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>早押しシステム(競技仕様)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; text-align: center; margin: 0; padding: 20px; background-color: #f4f4f9; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; text-align: center; background: #fff; touch-action: manipulation; }
         .hidden { display: none !important; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { color: #333; font-size: 24px; }
-        input[type="text"] { padding: 10px; font-size: 16px; width: 80%; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-        button { padding: 15px 30px; font-size: 18px; border: none; border-radius: 5px; cursor: pointer; color: white; background-color: #007BFF; transition: 0.2s; margin: 5px; }
-        button:hover { opacity: 0.8; }
+        .screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; width: 100%; }
         
-        #buzzer-btn { width: 200px; height: 200px; border-radius: 50%; font-size: 32px; font-weight: bold; background-color: #dc3545; box-shadow: 0 10px 0 #a71d2a; margin-top: 30px; }
-        #buzzer-btn:active { transform: translateY(10px); box-shadow: 0 0 0 #a71d2a; }
-        #buzzer-btn:disabled { background-color: #ccc; box-shadow: 0 10px 0 #999; cursor: not-allowed; transform: none; }
-        
-        #winner-display { font-size: 28px; color: #333; font-weight: bold; margin: 20px 0; min-height: 40px; }
-        .player-list { text-align: left; background: #eee; padding: 10px; border-radius: 5px; margin-top: 20px; font-size: 14px; }
-        
-        .judge-btn { font-size: 24px; padding: 15px 40px; margin: 10px; font-weight: bold; }
-        .btn-correct { background-color: #007bff; }
-        .btn-incorrect { background-color: #dc3545; }
-        .btn-reset { background-color: #28a745; width: 80%; margin-top: 20px; }
-        .btn-copy { background-color: #6c757d; font-size: 14px; padding: 8px 16px; margin-top: 10px; }
+        /* 初期設定画面のスタイル */
+        input[type="text"] { padding: 15px; font-size: 20px; width: 80%; max-width: 300px; margin-bottom: 20px; text-align: center; }
+        .btn-start { padding: 15px 40px; font-size: 20px; background: #333; color: #fff; border: none; cursor: pointer; }
+
+        /* 親機画面のスタイル */
+        #name-display { font-size: 15vw; font-weight: bold; margin: 0; flex-grow: 1; display: flex; align-items: center; }
+        .judge-area { display: flex; width: 100%; height: 40vh; }
+        .judge-btn { flex: 1; font-size: 100px; border: none; color: white; cursor: pointer; font-weight: bold; }
+        .btn-o { background: #007bff; }
+        .btn-x { background: #dc3545; }
+        #qr-container { position: absolute; top: 10px; left: 10px; opacity: 0.5; }
+
+        /* 子機画面のスタイル */
+        #buzzer-btn { width: 100%; height: 100%; border: none; outline: none; background: #dc3545; cursor: pointer; transition: background 0.1s; }
+        /* 子機の状態カラー */
+        .state-ready { background: #dc3545 !important; } /* 赤：押せる */
+        .state-wait { background: #ccc !important; } /* グレー：他の人が解答中 */
+        .state-answering { background: #007bff !important; } /* 青：自分が解答中 */
+        .state-out { background: #222 !important; } /* 黒：お休み */
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>早押しシステム</h1>
-
-    <div id="init-screen">
-        <p id="loading-msg">通信の準備中...</p>
-        <div id="host-setup" class="hidden">
-            <p>この端末をクイズの親機（出題者）にしますか？</p>
-            <button onclick="startHost()">親機になる</button>
-        </div>
-        <div id="player-setup" class="hidden">
-            <p>あなたの名前を入力してください</p>
-            <input type="text" id="player-name" placeholder="名前 (例: 山田)">
-            <br>
-            <button onclick="joinGame()">参加する</button>
-        </div>
+<div id="init-screen" class="screen">
+    <div id="host-setup" class="hidden">
+        <button class="btn-start" onclick="startHost()">親機になる</button>
     </div>
-
-    <div id="host-screen" class="hidden">
-        <p style="font-size: 14px;">参加者はQRコードを読むか、リンクから参加してください</p>
-        <img id="qrcode" src="" alt="QR Code" style="width: 150px; height: 150px;">
+    <div id="player-setup" class="hidden">
+        <input type="text" id="player-name" placeholder="名前">
         <br>
-        <button class="btn-copy" onclick="copyJoinLink()">🔗 参加用リンクをコピー</button>
-        <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
-        
-        <div id="winner-display">待機中...</div>
-
-        <div id="judge-controls" class="hidden">
-            <button class="judge-btn btn-correct" onclick="judge(true)">〇 正解</button>
-            <button class="judge-btn btn-incorrect" onclick="judge(false)">× 不正解</button>
-        </div>
-
-        <button class="btn-reset" onclick="resetBuzzer()">リセット (全員のボタンを復活)</button>
-
-        <div class="player-list">
-            <strong>接続中のプレイヤー:</strong>
-            <ul id="connected-players"></ul>
-        </div>
-    </div>
-
-    <div id="player-screen" class="hidden">
-        <h2 id="player-status">準備完了！</h2>
-        <button id="buzzer-btn" onclick="pushBuzzer()">押す！</button>
+        <button class="btn-start" onclick="joinGame()">参加</button>
     </div>
 </div>
 
+<div id="host-screen" class="screen hidden">
+    <div id="qr-container"><img id="qrcode" src="" width="80" height="80"></div>
+    <div id="name-display">待機中</div>
+    <div class="judge-area">
+        <button class="judge-btn btn-o" onclick="judge(true)">〇</button>
+        <button class="judge-btn btn-x" onclick="judge(false)">×</button>
+    </div>
+</div>
+
+<div id="player-screen" class="screen hidden">
+    <button id="buzzer-btn" class="state-ready" onclick="pushBuzzer()"></button>
+</div>
+
 <script>
-    const urlParams = new URLSearchParams(window.location.search);
-    const hostIdParam = urlParams.get('host');
-
-    let peer = null;
+    const hostIdParam = new URLSearchParams(window.location.search).get('host');
+    let peer = new Peer();
+    
+    // 状態管理変数
+    let connections = [];
+    let isAnswering = false;
+    let answeringPeerId = null;
+    let wrongPlayers = []; // お休み中のID
     let myName = "";
-    let connections = []; 
-    let isLocked = false; 
-    let currentAnsweringName = "";
-    let currentJoinUrl = "";
-    let hostConnection = null;
+    let hostConn = null;
+    let amIOut = false; // 自分が休止中か
 
-    window.onload = () => {
-        peer = new Peer(); 
-        peer.on('open', (id) => {
-            document.getElementById('loading-msg').classList.add('hidden');
-            if (hostIdParam) {
-                document.getElementById('player-setup').classList.remove('hidden');
-            } else {
-                document.getElementById('host-setup').classList.remove('hidden');
-            }
-        });
-    };
+    peer.on('open', () => {
+        document.getElementById(hostIdParam ? 'player-setup' : 'host-setup').classList.remove('hidden');
+    });
 
-    // --- 親機の処理 ---
+    // === 親機の処理 ===
     function startHost() {
         document.getElementById('init-screen').classList.add('hidden');
         document.getElementById('host-screen').classList.remove('hidden');
-
-        currentJoinUrl = window.location.href.split('?')[0] + '?host=' + peer.id;
-        document.getElementById('qrcode').src = 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=' + encodeURIComponent(currentJoinUrl);
+        
+        const url = window.location.href.split('?')[0] + '?host=' + peer.id;
+        document.getElementById('qrcode').src = 'https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=' + encodeURIComponent(url);
 
         peer.on('connection', (conn) => {
             connections.push(conn);
             conn.on('data', (data) => {
-                if (data.type === 'join') {
-                    const li = document.createElement('li');
-                    li.innerText = data.name;
-                    li.id = 'player-' + conn.peer;
-                    document.getElementById('connected-players').appendChild(li);
-                }
-                if (data.type === 'buzz' && !isLocked) {
-                    isLocked = true;
-                    currentAnsweringName = data.name;
-                    document.getElementById('winner-display').innerText = data.name + ' さんが解答中！';
-                    document.getElementById('judge-controls').classList.remove('hidden');
-                    broadcast({ type: 'answering', name: data.name });
+                // 誰も答えておらず、かつお休み中でない人だけ通す
+                if (data.type === 'buzz' && !isAnswering && !wrongPlayers.includes(conn.peer)) {
+                    isAnswering = true;
+                    answeringPeerId = conn.peer;
+                    document.getElementById('name-display').innerText = data.name;
+                    broadcast({ type: 'lock', answeringId: conn.peer });
                 }
             });
-            conn.on('close', () => {
-                const el = document.getElementById('player-' + conn.peer);
-                if(el) el.remove();
-            });
-        });
-    }
-
-    function copyJoinLink() {
-        navigator.clipboard.writeText(currentJoinUrl).then(() => {
-            alert("コピーしました！");
-        }).catch(() => {
-            alert("コピーに失敗しました。");
         });
     }
 
     function judge(isCorrect) {
-        document.getElementById('judge-controls').classList.add('hidden');
         if (isCorrect) {
-            document.getElementById('winner-display').innerText = currentAnsweringName + ' さん正解！';
-            broadcast({ type: 'correct', name: currentAnsweringName });
+            // 【〇】正解、または次の問題へ強制スキップ (全リセット)
+            isAnswering = false;
+            answeringPeerId = null;
+            wrongPlayers = [];
+            document.getElementById('name-display').innerText = '待機中';
+            broadcast({ type: 'reset' });
         } else {
-            // 不正解の場合は即座にロック解除して続行
-            document.getElementById('winner-display').innerText = '待機中... (前回不正解: ' + currentAnsweringName + ')';
-            isLocked = false;
-            currentAnsweringName = "";
-            broadcast({ type: 'incorrect' });
+            // 【×】誤答処理 (押した人をお休みに入れ、他を復活)
+            if (!isAnswering) return; 
+            wrongPlayers.push(answeringPeerId);
+            const wrongId = answeringPeerId;
+            
+            isAnswering = false;
+            answeringPeerId = null;
+            document.getElementById('name-display').innerText = '待機中';
+            broadcast({ type: 'resume', wrongId: wrongId });
         }
-    }
-
-    function resetBuzzer() {
-        isLocked = false;
-        currentAnsweringName = "";
-        document.getElementById('judge-controls').classList.add('hidden');
-        document.getElementById('winner-display').innerText = '待機中...';
-        broadcast({ type: 'reset' });
     }
 
     function broadcast(data) {
-        connections.forEach(conn => {
-            if (conn.open) conn.send(data);
-        });
+        connections.forEach(c => { if (c.open) c.send(data); });
     }
 
-    // --- 子機の処理 ---
+    // === 子機の処理 ===
     function joinGame() {
         myName = document.getElementById('player-name').value;
-        if (!myName) {
-            alert('名前を入力してください！');
-            return;
-        }
+        if (!myName) return;
+        
         document.getElementById('init-screen').classList.add('hidden');
         document.getElementById('player-screen').classList.remove('hidden');
-        document.getElementById('player-status').innerText = '親機に接続中...';
 
-        hostConnection = peer.connect(hostIdParam);
-        hostConnection.on('open', () => {
-            document.getElementById('player-status').innerText = '準備完了！';
-            hostConnection.send({ type: 'join', name: myName });
-        });
+        hostConn = peer.connect(hostIdParam);
+        hostConn.on('open', () => hostConn.send({ type: 'join', name: myName }));
 
-        hostConnection.on('data', (data) => {
-            const statusEl = document.getElementById('player-status');
-            const btnEl = document.getElementById('buzzer-btn');
+        const btn = document.getElementById('buzzer-btn');
 
-            if (data.type === 'answering') {
-                btnEl.disabled = true;
-                statusEl.innerText = (data.name === myName) ? 'あなたの番です！' : data.name + ' さんが解答中...';
+        hostConn.on('data', (data) => {
+            if (data.type === 'lock') {
+                // 誰かが押した
+                btn.className = (data.answeringId === peer.id) ? 'state-answering' : 'state-wait';
             } 
-            else if (data.type === 'correct') {
-                btnEl.disabled = true;
-                statusEl.innerText = (data.name === myName) ? '大正解！' : data.name + ' さんが正解しました';
-            } 
-            else if (data.type === 'incorrect') {
-                // 誰かが不正解になったら全員のボタンが即復活
-                btnEl.disabled = false;
-                statusEl.innerText = '不正解！誰でも押せます！';
+            else if (data.type === 'resume') {
+                // 誰かが×になった
+                if (data.wrongId === peer.id) {
+                    amIOut = true;
+                    btn.className = 'state-out';
+                } else if (!amIOut) {
+                    btn.className = 'state-ready';
+                }
             } 
             else if (data.type === 'reset') {
-                btnEl.disabled = false;
-                statusEl.innerText = '準備完了！';
+                // 親が〇を押した（次の問題）
+                amIOut = false;
+                btn.className = 'state-ready';
             }
         });
     }
 
     function pushBuzzer() {
-        document.getElementById('buzzer-btn').disabled = true;
-        if (hostConnection && hostConnection.open) {
-            hostConnection.send({ type: 'buzz', name: myName });
+        if (amIOut || document.getElementById('buzzer-btn').className !== 'state-ready') return;
+        if (hostConn && hostConn.open) {
+            hostConn.send({ type: 'buzz', name: myName });
         }
     }
+    
+    // ダブルタップズーム防止(iOS対応)
+    document.addEventListener('dblclick', function(e){ e.preventDefault(); }, { passive: false });
 </script>
 
 </body>
